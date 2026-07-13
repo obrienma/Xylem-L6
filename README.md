@@ -3,14 +3,14 @@
 **Xylem-L6** is a standalone TypeScript stream processor that ingests SaaS API activity logs (GitHub, Okta, Auth0, Slack-style audit formats) and computes stateful security signals over them — request velocity, failed-auth bursts, first-seen IP/device/user-agent, impossible travel, and scope escalation. It exists to close a gap in the wider Rhizome Risk suite: nothing else in the suite ([EventHorizon](https://github.com/obrienma/EventHorizon), [Sentinel-L7](https://github.com/obrienma/sentinel-l7), [Synapse-L4](https://github.com/obrienma/synapse-l4)) holds state across events, computes over a sliding time window, handles out-of-order arrival, or applies in-process backpressure. See [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md) for the full rationale.
 
 > [!NOTE]
-> **Status: scaffolding only.** The project skeleton (TypeScript + Zod + Vitest, canonical `ApiActivityEvent` schema, adapter interface, adapter stubs) is in place and runnable, but Phase 1 itself — real adapter implementations and the sliding-window velocity counter — has not been built yet. Both adapters currently throw `not implemented`.
+> **Status: Phase 1 complete.** Both adapters are real (not stubs), the in-memory sliding-window velocity counter is implemented and event-time-driven (handles late/out-of-order arrival via a watermark), and `npm run dev` runs an end-to-end demo. No persistence and no sink yet — Phase 2 (first-seen sets, impossible travel) hasn't started.
 
 ---
 
 ## 📋 Contents
 
 - [📋 Contents](#-contents)
-- [🧰 Stack](#-stack-planned)
+- [🧰 Stack](#-stack)
 - [🚀 Running the Project](#-running-the-project)
 - [🏗️ Architecture](#️-architecture)
   - [🔀 Pipeline Diagram](#-pipeline-diagram)
@@ -21,16 +21,17 @@
   - [🔭 Deliberately Deferred](#-deliberately-deferred)
 
 
-## 🧰 Stack (planned)
+## 🧰 Stack
 
 **⚡ Core**
 
 - **TypeScript + Zod:** Canonical `ApiActivityEvent` contract and provider-adapter inputs validated at runtime with Zod — chosen deliberately for interview relevance (upcoming backend TypeScript interview) and to close the suite's only backend-TS streaming gap. See [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md).
-- **Two provider adapters behind one shared interface, from Phase 1:** `fixture-replay` (static/hand-authored sample events with controllable timing/jitter, for forcing specific windowing edge cases on demand) and `github-events-live` (GitHub's public Events API, polled against a real account). Okta's System Log API is a deferred third candidate.
+- **Two provider adapters behind one shared interface (`ActivityAdapter`), implemented:** `fixture-replay` (hand-authored sample schedule with a baseline, a burst, a gap, and a late/out-of-order event — controllable per-event delay and jitter) and `github-events-live` (GitHub's public Events API, polled against a real account, deduped by event id). Okta's System Log API is a deferred third candidate.
+- **In-memory sliding-window velocity counter (`src/core/window.ts`):** event-time-driven, not wall-clock-driven — a per-actor watermark governs retention so a late-arriving event doesn't lose data recorded after it. Retains `2 × windowMs` of history to correctly answer a late event's own trailing window; an event later than one full `windowMs` behind the watermark falls outside that bound and may be undercounted (a known, documented Phase 1 limitation — a real "allowed lateness" config is Phase 2+).
 
 **🧪 Testing & Dev**
 
-- **Vitest:** Test runner — `tests/` mirrors `src/`, colocated by module. `tests/core/types.test.ts` is a smoke test validating the `ApiActivityEvent` Zod schema.
+- **Vitest:** Test runner — `tests/` mirrors `src/`, colocated by module. 15 tests covering the schema, the velocity counter (including the late/out-of-order case), both adapters (GitHub calls mocked via an injectable `fetchImpl`, never a real network call), and a domain-isolation arch test (`tests/arch.test.ts`).
 - **tsx:** Runs TypeScript directly in dev without a separate build step.
 
 **☁️ Deployment (planned, Phase 4+)**
@@ -46,6 +47,7 @@
 ### ✅ Prerequisites
 
 - **Node.js 24+** with npm
+- A **GitHub personal access token** (no special scope needed) — only required for the `github-events-live` adapter; `fixture-replay` needs nothing.
 
 ### ⚡ Quick Start
 
@@ -59,12 +61,14 @@ npx tsc --noEmit
 # 3. Run the test suite
 npm test
 
-# 4. Run the (currently stub) entry point
+# 4. Run the demo against fixture-replay (default, no credentials needed)
 npm run dev
+
+# 5. Or run it against real live GitHub activity
+XYLEM_ADAPTER=github-events-live GITHUB_USERNAME=<you> GITHUB_TOKEN=<token> npm run dev
 ```
 
-> [!NOTE]
-> There is no working pipeline yet — `npm run dev` just prints a status line. Both adapters throw `not implemented` until Phase 1 lands.
+`npm run dev` prints one line per event: timestamp, actor, action, and the current sliding-window velocity for that actor, flagging `[VELOCITY BREACH]` at 3+ events in the window. No persistence and no sink — this is Phase 1's demo, not a running service.
 
 
 ## 🏗️ Architecture
@@ -74,19 +78,19 @@ npm run dev
 ```mermaid
 flowchart LR
     subgraph Adapters
-        F[fixture-replay]
-        G[github-events-live]
-        O[Okta System Log\n_deferred_]
+        F["fixture-replay\n(implemented)"]
+        G["github-events-live\n(implemented)"]
+        O["Okta System Log\n(deferred)"]
     end
     subgraph Core
         E[ApiActivityEvent\nZod-validated]
-        W[Sliding-Window\nSignal Engine]
+        W["SlidingWindowVelocityCounter\n(implemented)"]
     end
     subgraph Signals
-        V[Velocity]
-        FS[First-seen IP/device/UA]
-        IT[Impossible Travel]
-        SE[Scope Escalation]
+        V["Velocity\n(implemented)"]
+        FS["First-seen IP/device/UA\n(Phase 2)"]
+        IT["Impossible Travel\n(Phase 2)"]
+        SE["Scope Escalation\n(Phase 2)"]
     end
     subgraph Sink
         S[Undecided—Phase 4]
@@ -97,13 +101,13 @@ flowchart LR
     O -.->|deferred| E
     E --> W
     W --> V
-    W --> FS
-    W --> IT
-    W --> SE
-    V --> S
-    FS --> S
-    IT --> S
-    SE --> S
+    W -.->|Phase 2| FS
+    W -.->|Phase 2| IT
+    W -.->|Phase 2| SE
+    V -.-> S
+    FS -.-> S
+    IT -.-> S
+    SE -.-> S
 ```
 
 No sink is assumed at Phase 1–3 — the pipeline ends at signal computation until a Phase 4 decision is made (standalone dashboard vs. EventHorizon vs. Sentinel-L7). A forward-looking direction toward Sentinel-L7 specifically is recorded, but not committed to, in [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md).
@@ -134,7 +138,7 @@ No sink is assumed at Phase 1–3 — the pipeline ends at signal computation un
 
 Per [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md), each phase is independently demoable:
 
-* [ ] **Phase 1** — canonical `ApiActivityEvent` Zod schema, both adapters (`fixture-replay` and `github-events-live`) behind a shared interface, in-memory sliding-window velocity counter. No persistence, no external hookup.
+* [x] **Phase 1** — canonical `ApiActivityEvent` Zod schema, both adapters (`fixture-replay` and `github-events-live`) behind a shared interface, in-memory sliding-window velocity counter. No persistence, no external hookup.
 * [ ] **Phase 2** — stateful signals that need running state rather than a window-only counter: first-seen sets, impossible travel.
 * [ ] **Phase 3** — checkpointing, so a process restart doesn't silently drop in-flight window/state.
 * [ ] **Phase 4** — sink decision (standalone dashboard vs. EventHorizon vs. Sentinel-L7), made deliberately and by ADR when it's reached, not assumed now.

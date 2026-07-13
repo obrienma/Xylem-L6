@@ -4,7 +4,7 @@ Project-specific Claude Code directives for Xylem-L6, instantiated from `~/.clau
 
 ## Project status
 
-Pre-implementation. Only `docs/adr/` and this file exist — no application code has been written yet. Sections below that reference specific files, test commands, or module paths are marked TBD until Phase 1 (per [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md)) lands; don't treat them as already-decided architecture.
+**Phase 1 complete** (per [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md)): canonical `ApiActivityEvent` schema, both adapters (`fixture-replay`, `github-events-live`) working for real, and the in-memory sliding-window velocity counter. No persistence, no external sink — `npm run dev` is the demo. Phase 2 (first-seen sets, impossible travel) has not started.
 
 ---
 
@@ -48,7 +48,7 @@ At the end of any development phase, before proposing a commit or when the user 
 
 - **Never hit real external APIs in tests** — this applies specifically to the `github-events-live` adapter; mock at the adapter-interface boundary (the shared contract both adapters implement), not inside individual adapter internals. `fixture-replay` exists precisely so windowing/signal logic can be tested without live calls at all.
 - **Test runner: Vitest.** Run the full suite with `npm test` (or `npm run test:watch` while iterating). Tests live in `tests/`, mirroring `src/` by module (e.g. `tests/core/types.test.ts` covers `src/core/types.ts`).
-- **Architecture/domain-isolation test:** not yet written — add one enforcing the adapter-interface boundary (see "Domain Logic Isolation" below) once the signal-computation core exists in Phase 1.
+- **Architecture/domain-isolation test:** `tests/arch.test.ts` — asserts no file under `src/core/` imports from `src/adapters/`. Run it after any change under `src/core/`.
 - Do not test implementation details — test behaviour and output (e.g. "given this event sequence, this signal fires," not internal window bookkeeping).
 - Use dataset-driven tests where the input space is non-trivial (signal thresholds, boundary/late-event windowing cases are a natural fit for `fixture-replay`).
 
@@ -56,7 +56,7 @@ At the end of any development phase, before proposing a commit or when the user 
 
 ## Domain Logic Isolation
 
-The signal-computation core (sliding-window engine + the velocity/first-seen/impossible-travel/scope-escalation signals — lives under `src/core/`, not yet built) must not import adapter-specific HTTP clients or SDKs directly. All adapter I/O must go through the shared `ActivityAdapter` interface (`src/core/adapter.ts`), implemented by `src/adapters/fixture-replay/` and `src/adapters/github-events-live/`, both producing the canonical `ApiActivityEvent` contract (`src/core/types.ts`). No enforcement test exists yet — add one (equivalent in spirit to sentinel-l7's Pest arch tests) once the signal engine lands in Phase 1.
+The signal-computation core (`src/core/window.ts`'s sliding-window velocity counter today; Phase 2 will add first-seen/impossible-travel/scope-escalation signals alongside it) must not import adapter-specific HTTP clients or SDKs directly. All adapter I/O must go through the shared `ActivityAdapter` interface (`src/core/adapter.ts`), implemented by `src/adapters/fixture-replay/` and `src/adapters/github-events-live/`, both producing the canonical `ApiActivityEvent` contract (`src/core/types.ts`). Enforced by `tests/arch.test.ts` (equivalent in spirit to sentinel-l7's Pest arch tests).
 
 ---
 
