@@ -28,7 +28,7 @@ Build a standalone stream processor, **Xylem-L6**, that:
 Build order (phased, each independently demoable):
 
 - **Phase 1** — canonical event type, both adapters (`fixture-replay` and `github-events-live`) behind the shared interface, in-memory sliding-window velocity counter. No persistence, no external hookup.
-- **Phase 2** — add the signals that require running state rather than a counter: first-seen sets, impossible travel. This is where per-identity state actually earns its keep over Phase 1's window-only logic.
+- **Phase 2** — add the signals that require running state rather than a counter: first-seen sets, impossible travel. This is where per-identity state actually earns its keep over Phase 1's window-only logic. *(See Addendum below — scope escalation is also in Phase 2's scope.)*
 - **Phase 3** — checkpointing, so process restart doesn't silently drop in-flight window/state.
 - **Phase 4** — sink decision (standalone dashboard vs. EventHorizon vs. Sentinel-L7), made deliberately and by ADR when it's reached, not assumed now.
 
@@ -62,3 +62,13 @@ TypeScript was chosen over Python primarily for interview relevance, not languag
 - A decision to feed Sentinel-L7 from this project's output follows the direction in ADR 0002, not this ADR — nothing here commits to it.
 - `github-events-live`'s signal coverage is narrower than the full signal set in ADR 0001: no auth/session-level events means impossible-travel and failed-auth-burst signals can't be demonstrated against it. Those signals remain demonstrable via `fixture-replay`, and would become live-demonstrable if an Okta adapter is added later.
 - Implementation is delegated to Claude Code against this ADR; conceptual/architectural decisions stay here, not in the implementation environment.
+
+## Addendum (2026-07-13, post-Phase-1)
+
+Phase 1 is complete. During Phase 2 implementation planning, a discrepancy surfaced between this ADR's build order (Decision, Phase 2: "first-seen sets, impossible travel") and the project README, whose pipeline diagram additionally tagged scope escalation as Phase 2 while its roadmap bullet agreed with this ADR. This addendum resolves the discrepancy rather than editing the original Phase 2 text, since Phase 1 was already built against this ADR as written.
+
+**Resolution: scope escalation is in Phase 2's scope**, alongside first-seen sets and impossible travel. Mechanism, not the README, is the reason: scope escalation requires tracking a previously-seen permission/scope set per identity and flagging a new entry — the same "maintain a per-identity seen-set, flag on first occurrence" shape as first-seen IP/device/user-agent tracking, not the sliding-window counting Phase 1 already covers. It belongs with the other seen-set signal, not deferred to invent a Phase 3.5.
+
+This does not reverse anything decided during Phase 1 — Phase 1 didn't touch any Phase 2 signal. The README's pipeline diagram was the inaccurate artifact here, not this ADR or the README's own roadmap bullet, and should be corrected to match this addendum rather than the reverse.
+
+Separately, unrelated to the phase question but caught in the same review: the README's opening description lists GitHub, Okta, Auth0, and Slack-style audit formats as ingestion sources. Per this ADR's Decision section, only two adapters are actually in scope — `fixture-replay` (Okta-shaped) and `github-events-live` (GitHub's Events API, not an audit-log format). Auth0 and Slack were early brainstorm examples, never decided. The README should be corrected to name only the two real adapters.
