@@ -3,7 +3,7 @@
 **Xylem-L6** is a standalone TypeScript stream processor that ingests SaaS API activity logs (GitHub, Okta, Auth0, Slack-style audit formats) and computes stateful security signals over them — request velocity, failed-auth bursts, first-seen IP/device/user-agent, impossible travel, and scope escalation. It exists to close a gap in the wider Rhizome Risk suite: nothing else in the suite ([EventHorizon](https://github.com/obrienma/EventHorizon), [Sentinel-L7](https://github.com/obrienma/sentinel-l7), [Synapse-L4](https://github.com/obrienma/synapse-l4)) holds state across events, computes over a sliding time window, handles out-of-order arrival, or applies in-process backpressure. See [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md) for the full rationale.
 
 > [!NOTE]
-> **Status: pre-implementation.** This repository currently contains architectural decisions only (`docs/adr/`) — no application code has been written yet. The sections below describe the planned stack and architecture as fixed by the ADRs; nothing here is runnable today.
+> **Status: scaffolding only.** The project skeleton (TypeScript + Zod + Vitest, canonical `ApiActivityEvent` schema, adapter interface, adapter stubs) is in place and runnable, but Phase 1 itself — real adapter implementations and the sliding-window velocity counter — has not been built yet. Both adapters currently throw `not implemented`.
 
 ---
 
@@ -28,6 +28,11 @@
 - **TypeScript + Zod:** Canonical `ApiActivityEvent` contract and provider-adapter inputs validated at runtime with Zod — chosen deliberately for interview relevance (upcoming backend TypeScript interview) and to close the suite's only backend-TS streaming gap. See [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md).
 - **Two provider adapters behind one shared interface, from Phase 1:** `fixture-replay` (static/hand-authored sample events with controllable timing/jitter, for forcing specific windowing edge cases on demand) and `github-events-live` (GitHub's public Events API, polled against a real account). Okta's System Log API is a deferred third candidate.
 
+**🧪 Testing & Dev**
+
+- **Vitest:** Test runner — `tests/` mirrors `src/`, colocated by module. `tests/core/types.test.ts` is a smoke test validating the `ApiActivityEvent` Zod schema.
+- **tsx:** Runs TypeScript directly in dev without a separate build step.
+
 **☁️ Deployment (planned, Phase 4+)**
 
 - **GCP Pub/Sub** as the ingestion transport, replacing adapter-level polling.
@@ -38,7 +43,28 @@
 
 ## 🚀 Running the Project
 
-Nothing to run yet — Phase 1 (canonical event type, both adapters, in-memory sliding-window velocity counter) has not been implemented. This section will be filled in with prerequisites and a quick-start once Phase 1 lands.
+### ✅ Prerequisites
+
+- **Node.js 24+** with npm
+
+### ⚡ Quick Start
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Type-check
+npx tsc --noEmit
+
+# 3. Run the test suite
+npm test
+
+# 4. Run the (currently stub) entry point
+npm run dev
+```
+
+> [!NOTE]
+> There is no working pipeline yet — `npm run dev` just prints a status line. Both adapters throw `not implemented` until Phase 1 lands.
 
 
 ## 🏗️ Architecture
@@ -99,6 +125,7 @@ No sink is assumed at Phase 1–3 — the pipeline ends at signal computation un
 | [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md) | Ingestion target (SaaS API activity) and standalone stream-processor architecture | 2026-07-13 |
 | [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md) | Sentinel-L7 integration direction — forward-looking, not committed | 2026-07-13 |
 | [ADR 0003](docs/adr/0003-gcp-deployment-target.md) | GCP as deployment target (Pub/Sub, Firestore, GKE) | 2026-07-13 |
+| [journal/](docs/journal/) | Engineering journal — one entry per phase, paired with Anki probes in [probes/](docs/probes/) | 2026-07-13 |
 
 
 ## 🗺️ Roadmap

@@ -47,7 +47,8 @@ At the end of any development phase, before proposing a commit or when the user 
 ## Testing
 
 - **Never hit real external APIs in tests** — this applies specifically to the `github-events-live` adapter; mock at the adapter-interface boundary (the shared contract both adapters implement), not inside individual adapter internals. `fixture-replay` exists precisely so windowing/signal logic can be tested without live calls at all.
-- **Architecture test file / command:** TBD — not yet chosen (no test runner selected for this TS project yet). Decide and record here when Phase 1 lands.
+- **Test runner: Vitest.** Run the full suite with `npm test` (or `npm run test:watch` while iterating). Tests live in `tests/`, mirroring `src/` by module (e.g. `tests/core/types.test.ts` covers `src/core/types.ts`).
+- **Architecture/domain-isolation test:** not yet written — add one enforcing the adapter-interface boundary (see "Domain Logic Isolation" below) once the signal-computation core exists in Phase 1.
 - Do not test implementation details — test behaviour and output (e.g. "given this event sequence, this signal fires," not internal window bookkeeping).
 - Use dataset-driven tests where the input space is non-trivial (signal thresholds, boundary/late-event windowing cases are a natural fit for `fixture-replay`).
 
@@ -55,7 +56,7 @@ At the end of any development phase, before proposing a commit or when the user 
 
 ## Domain Logic Isolation
 
-The signal-computation core (sliding-window engine + the velocity/first-seen/impossible-travel/scope-escalation signals) must not import adapter-specific HTTP clients or SDKs directly. All adapter I/O must go through the shared adapter interface defined in ADR 0001 (`fixture-replay` / `github-events-live`, both producing the canonical `ApiActivityEvent` contract). Exact module path/namespace: TBD — record here once Phase 1's file layout exists, and add an enforcement test (equivalent in spirit to sentinel-l7's Pest arch tests) at that point.
+The signal-computation core (sliding-window engine + the velocity/first-seen/impossible-travel/scope-escalation signals — lives under `src/core/`, not yet built) must not import adapter-specific HTTP clients or SDKs directly. All adapter I/O must go through the shared `ActivityAdapter` interface (`src/core/adapter.ts`), implemented by `src/adapters/fixture-replay/` and `src/adapters/github-events-live/`, both producing the canonical `ApiActivityEvent` contract (`src/core/types.ts`). No enforcement test exists yet — add one (equivalent in spirit to sentinel-l7's Pest arch tests) once the signal engine lands in Phase 1.
 
 ---
 
