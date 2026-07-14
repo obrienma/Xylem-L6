@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="493" height="464" alt="Xylem-L6" src="https://github.com/user-attachments/assets/93ed3f1f-e9d1-4f35-a575-0fba7f3f0985" />
+  <img width="493" height="464" alt="Xylem-L6" src="assets/Xylem-L6-logo.png" />
 </p>
 
 **Xylem-L6** is a standalone TypeScript stream processor that ingests SaaS API activity — GitHub's public Events API live, and hand-authored Okta-shaped fixture data for on-demand windowing conditions — and computes stateful security signals over them — request velocity, failed-auth bursts, first-seen IP/device/user-agent, impossible travel, and scope escalation. It exists to close a gap in the wider Rhizome Risk suite: nothing else in the suite ([EventHorizon](https://github.com/obrienma/EventHorizon), [Sentinel-L7](https://github.com/obrienma/sentinel-l7), [Synapse-L4](https://github.com/obrienma/synapse-l4)) holds state across events, computes over a sliding time window, handles out-of-order arrival, or applies in-process backpressure. See [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md) for the full rationale.
