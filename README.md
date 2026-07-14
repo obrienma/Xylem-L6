@@ -5,7 +5,7 @@
 **Xylem-L6** is a standalone TypeScript stream processor that ingests SaaS API activity — GitHub's public Events API live, and hand-authored Okta-shaped fixture data for on-demand windowing conditions — and computes stateful security signals over them — request velocity, failed-auth bursts, first-seen IP/device/user-agent, impossible travel, and scope escalation. It exists to close a gap in the wider Rhizome Risk suite: nothing else in the suite ([EventHorizon](https://github.com/obrienma/EventHorizon), [Sentinel-L7](https://github.com/obrienma/sentinel-l7), [Synapse-L4](https://github.com/obrienma/synapse-l4)) holds state across events, computes over a sliding time window, handles out-of-order arrival, or applies in-process backpressure. See [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md) for the full rationale.
 
 > [!NOTE]
-> **Status: Phase 3 complete.** All four trackers — Phase 1's sliding-window velocity counter and Phase 2's first-seen IP tracker, impossible travel detector, and scope escalation tracker — now checkpoint their combined state to a local JSON file after every event and restore it on startup, so a process restart no longer silently drops in-flight window/state. Still no external sink — Phase 4 (sink decision) hasn't started.
+> **Status: Phase 4 decided.** All four trackers — Phase 1's sliding-window velocity counter and Phase 2's first-seen IP tracker, impossible travel detector, and scope escalation tracker — checkpoint their combined state to a local JSON file after every event and restore it on startup (Phase 3). [ADR 0004](docs/adr/0004-sentinel-l7-sink-decision.md) fixes Xylem-L6's Phase 4 sink as **Sentinel-L7** — a decision, not an integration. No code changes yet: a fusion-function ADR (this repo) and a policy-corpus ADR (Sentinel-L7) are still required before any wiring happens.
 
 ---
 
@@ -103,7 +103,7 @@ flowchart LR
         CP["CheckpointStore\n(implemented, local JSON)"]
     end
     subgraph Sink
-        S[Undecided—Phase 4]
+        S["Sentinel-L7\n(decided, ADR 0004 — not built)"]
     end
 
     F --> E
@@ -125,7 +125,7 @@ flowchart LR
     SE -.-> S
 ```
 
-No sink is assumed at Phase 1–3 — the pipeline ends at signal computation until a Phase 4 decision is made (standalone dashboard vs. EventHorizon vs. Sentinel-L7). A forward-looking direction toward Sentinel-L7 specifically is recorded, but not committed to, in [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md).
+No sink was assumed at Phase 1–3 — the pipeline ended at signal computation until the Phase 4 decision was made. [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md) recorded a forward-looking direction toward Sentinel-L7 without committing to it; [ADR 0004](docs/adr/0004-sentinel-l7-sink-decision.md) converts that direction into the committed Phase 4 sink. The pipeline diagram's Sink node reflects the decision, not a built integration — no wiring exists yet.
 
 ### 🗂️ Provider Adapters
 
@@ -144,6 +144,7 @@ No sink is assumed at Phase 1–3 — the pipeline ends at signal computation un
 | [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md) | Ingestion target (SaaS API activity) and standalone stream-processor architecture | 2026-07-13 |
 | [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md) | Sentinel-L7 integration direction — forward-looking, not committed | 2026-07-13 |
 | [ADR 0003](docs/adr/0003-gcp-deployment-target.md) | GCP as deployment target (Pub/Sub, Firestore, GKE) | 2026-07-13 |
+| [ADR 0004](docs/adr/0004-sentinel-l7-sink-decision.md) | Phase 4 sink decision — Sentinel-L7, committed direction, no integration built | 2026-07-14 |
 | [journal/](docs/journal/) | Engineering journal — one entry per phase, paired with Anki probes in [probes/](docs/probes/) | 2026-07-14 |
 
 
@@ -156,12 +157,12 @@ Per [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md), each phase i
 * [x] **Phase 1** — canonical `ApiActivityEvent` Zod schema, both adapters (`fixture-replay` and `github-events-live`) behind a shared interface, in-memory sliding-window velocity counter. No persistence, no external hookup.
 * [x] **Phase 2** — stateful signals that need running state rather than a window-only counter: first-seen IP tracker, impossible travel detector, scope escalation tracker (see [ADR 0001 addendum](docs/adr/0001-ingestion-target-stream-processor.md#addendum-2026-07-13-post-phase-1) for why scope escalation is in scope). First-seen tracking is IP-only for now — device/user-agent isn't in the `ApiActivityEvent` schema and no adapter currently supplies it.
 * [x] **Phase 3** — checkpointing, so a process restart doesn't silently drop in-flight window/state. Each tracker exports/imports its state via `getState()`/`loadState()`; `CheckpointStore` persists all four to a single local JSON file after every event and restores it on startup.
-* [ ] **Phase 4** — sink decision (standalone dashboard vs. EventHorizon vs. Sentinel-L7), made deliberately and by ADR when it's reached, not assumed now.
+* [x] **Phase 4** — sink decision, made deliberately by ADR when reached (not assumed in advance): [ADR 0004](docs/adr/0004-sentinel-l7-sink-decision.md) fixes the sink as Sentinel-L7. Decision only — no integration code; a fusion-function ADR (this repo) and a policy-corpus ADR (Sentinel-L7) are still required first.
 
 ### 🔭 Deliberately Deferred
 
 * **Okta System Log adapter** — the genuinely audit-log-shaped provider (auth/session events); would unlock live impossible-travel and failed-auth-burst signal demos. Not started.
 * **First-seen device/user-agent tracking** — `FirstSeenIpTracker` (Phase 2) covers source IP only; device/UA would need a new `ApiActivityEvent` field neither adapter currently populates, so it wasn't added speculatively.
 * **Failed-auth-burst signal** — named in ADR 0001's full signal set but not scoped into Phase 2 by the ADR's build order or its addendum; would need auth-event data neither adapter reliably carries today (see the `github-events-live` row above).
-* **Sentinel-L7 scored-output integration** — requires a fusion function on Xylem-L6's side (discrete signals → single score) and a SaaS-domain policy corpus on Sentinel-L7's side. Neither exists yet. See [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md).
+* **Sentinel-L7 scored-output integration** — the sink itself is now decided ([ADR 0004](docs/adr/0004-sentinel-l7-sink-decision.md)), but the integration still requires a fusion function on Xylem-L6's side (discrete signals → single score) and a SaaS-domain policy corpus on Sentinel-L7's side. Neither exists yet; each needs its own follow-up ADR before code. See [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md) for the original direction.
 * **GCP deployment (Pub/Sub, Firestore, GKE)** — architecturally decided ([ADR 0003](docs/adr/0003-gcp-deployment-target.md)) but not built; Phase 3's local-JSON checkpoint store is the placeholder Firestore will eventually replace.
