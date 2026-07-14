@@ -5,6 +5,10 @@
  * checkpointing concern is what makes that state durable across restarts,
  * not addressed here).
  */
+export interface FirstSeenIpTrackerState {
+  seenIpsByActor: [string, string[]][];
+}
+
 export class FirstSeenIpTracker {
   private readonly seenIpsByActor = new Map<string, Set<string>>();
 
@@ -15,5 +19,18 @@ export class FirstSeenIpTracker {
     seen.add(sourceIp);
     this.seenIpsByActor.set(actorId, seen);
     return isFirstSeen;
+  }
+
+  getState(): FirstSeenIpTrackerState {
+    return {
+      seenIpsByActor: [...this.seenIpsByActor.entries()].map(([actorId, ips]) => [actorId, [...ips]]),
+    };
+  }
+
+  loadState(state: FirstSeenIpTrackerState): void {
+    this.seenIpsByActor.clear();
+    for (const [actorId, ips] of state.seenIpsByActor) {
+      this.seenIpsByActor.set(actorId, new Set(ips));
+    }
   }
 }

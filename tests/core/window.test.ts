@@ -41,4 +41,30 @@ describe("SlidingWindowVelocityCounter", () => {
     counter.count("amanda", 500_000);
     expect(counter.count("amanda", 0)).toBe(1);
   });
+
+  it("round-trips state through getState/loadState", () => {
+    const counter = new SlidingWindowVelocityCounter({ windowMs: 60_000 });
+    counter.record("amanda", 0);
+    counter.record("amanda", 10_000);
+    counter.record("obrienma", 5_000);
+
+    const restored = new SlidingWindowVelocityCounter({ windowMs: 60_000 });
+    restored.loadState(counter.getState());
+
+    expect(restored.count("amanda", 10_000)).toBe(2);
+    expect(restored.count("obrienma", 5_000)).toBe(1);
+  });
+
+  it("restores the watermark so late-event handling is correct after a reload", () => {
+    const counter = new SlidingWindowVelocityCounter({ windowMs: 60_000 });
+    counter.record("amanda", 0);
+    counter.record("amanda", 61_000); // watermark now 61_000
+
+    const restored = new SlidingWindowVelocityCounter({ windowMs: 60_000 });
+    restored.loadState(counter.getState());
+
+    const lateCount = restored.record("amanda", 30_000);
+    expect(lateCount).toBe(2); // 0ms and 30_000ms both fall in (30_000-60_000, 30_000]
+    expect(restored.count("amanda", 61_000)).toBe(2); // 30_000ms and 61_000ms not evicted
+  });
 });

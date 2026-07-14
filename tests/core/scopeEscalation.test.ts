@@ -38,4 +38,16 @@ describe("ScopeEscalationTracker", () => {
     const result = tracker.record("obrienma", ["repo:admin"]);
     expect(result.isEscalation).toBe(false);
   });
+
+  it("round-trips state through getState/loadState", () => {
+    const tracker = new ScopeEscalationTracker();
+    tracker.record("amanda", ["repo:read"]);
+
+    const restored = new ScopeEscalationTracker();
+    restored.loadState(tracker.getState());
+
+    const result = restored.record("amanda", ["repo:read", "repo:admin"]);
+    expect(result.newScopes).toEqual(["repo:admin"]);
+    expect(result.isEscalation).toBe(true);
+  });
 });

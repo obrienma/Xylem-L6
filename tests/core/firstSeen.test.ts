@@ -24,4 +24,15 @@ describe("FirstSeenIpTracker", () => {
     tracker.record("amanda", "10.0.0.1");
     expect(tracker.record("obrienma", "10.0.0.1")).toBe(true);
   });
+
+  it("round-trips state through getState/loadState", () => {
+    const tracker = new FirstSeenIpTracker();
+    tracker.record("amanda", "10.0.0.1");
+
+    const restored = new FirstSeenIpTracker();
+    restored.loadState(tracker.getState());
+
+    expect(restored.record("amanda", "10.0.0.1")).toBe(false);
+    expect(restored.record("amanda", "10.0.0.2")).toBe(true);
+  });
 });

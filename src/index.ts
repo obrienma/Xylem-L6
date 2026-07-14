@@ -3,12 +3,14 @@ import { SlidingWindowVelocityCounter } from "./core/window.js";
 import { FirstSeenIpTracker } from "./core/firstSeen.js";
 import { ImpossibleTravelDetector } from "./core/impossibleTravel.js";
 import { ScopeEscalationTracker } from "./core/scopeEscalation.js";
+import { CheckpointStore } from "./core/checkpoint.js";
 import { FixtureReplayAdapter } from "./adapters/fixture-replay/index.js";
 import { GithubEventsLiveAdapter } from "./adapters/github-events-live/index.js";
 
 const WINDOW_MS = 120_000;
 const VELOCITY_BREACH_THRESHOLD = 3;
 const MAX_PLAUSIBLE_SPEED_KMH = 900; // roughly a commercial jet's cruising speed
+const CHECKPOINT_FILE_PATH = process.env.XYLEM_CHECKPOINT_FILE ?? ".xylem-checkpoint.json";
 
 function resolveAdapter(): ActivityAdapter {
   const which = process.env.XYLEM_ADAPTER ?? "fixture-replay";
@@ -35,8 +37,19 @@ async function main(): Promise<void> {
   const firstSeenIps = new FirstSeenIpTracker();
   const impossibleTravel = new ImpossibleTravelDetector({ maxPlausibleSpeedKmh: MAX_PLAUSIBLE_SPEED_KMH });
   const scopeEscalation = new ScopeEscalationTracker();
+  const checkpoint = new CheckpointStore({ filePath: CHECKPOINT_FILE_PATH });
 
-  console.log(`Xylem-L6 — Phase 2 demo, adapter: ${adapter.name}, window: ${WINDOW_MS}ms`);
+  const restored = checkpoint.load();
+  if (restored) {
+    counter.loadState(restored.velocity);
+    firstSeenIps.loadState(restored.firstSeenIps);
+    impossibleTravel.loadState(restored.impossibleTravel);
+    scopeEscalation.loadState(restored.scopeEscalation);
+  }
+
+  console.log(
+    `Xylem-L6 — Phase 3 demo, adapter: ${adapter.name}, window: ${WINDOW_MS}ms${restored ? " (resumed from checkpoint)" : ""}`,
+  );
 
   for await (const activityEvent of adapter.stream()) {
     const velocity = counter.record(activityEvent.actor.id, activityEvent.timestamp.getTime());
@@ -62,6 +75,13 @@ async function main(): Promise<void> {
     const scopeEscalationFlag = escalation.isEscalation
       ? ` [SCOPE ESCALATION ${escalation.newScopes.join(",")}]`
       : "";
+
+    checkpoint.save({
+      velocity: counter.getState(),
+      firstSeenIps: firstSeenIps.getState(),
+      impossibleTravel: impossibleTravel.getState(),
+      scopeEscalation: scopeEscalation.getState(),
+    });
 
     console.log(
       `${activityEvent.timestamp.toISOString()} actor=${activityEvent.actor.id} action=${activityEvent.action} velocity=${velocity}${breach}${firstSeen}${impossible}${scopeEscalationFlag}`,

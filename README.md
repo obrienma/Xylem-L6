@@ -1,11 +1,11 @@
 <p align="center">
-  <img width="493" height="464" alt="Xylem-L6" src="assets/Xylem-L6-logo.png" />
+  <img width="200" alt="Xylem-L6" src="assets/Xylem-L6-logo.png" />
 </p>
 
 **Xylem-L6** is a standalone TypeScript stream processor that ingests SaaS API activity — GitHub's public Events API live, and hand-authored Okta-shaped fixture data for on-demand windowing conditions — and computes stateful security signals over them — request velocity, failed-auth bursts, first-seen IP/device/user-agent, impossible travel, and scope escalation. It exists to close a gap in the wider Rhizome Risk suite: nothing else in the suite ([EventHorizon](https://github.com/obrienma/EventHorizon), [Sentinel-L7](https://github.com/obrienma/sentinel-l7), [Synapse-L4](https://github.com/obrienma/synapse-l4)) holds state across events, computes over a sliding time window, handles out-of-order arrival, or applies in-process backpressure. See [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md) for the full rationale.
 
 > [!NOTE]
-> **Status: Phase 2 complete.** All three running-state signals are implemented — first-seen IP tracker, impossible travel detector, scope escalation tracker (see [ADR 0001 addendum](docs/adr/0001-ingestion-target-stream-processor.md#addendum-2026-07-13-post-phase-1) for why scope escalation is in Phase 2's scope) — alongside Phase 1's adapters and sliding-window velocity counter, all wired into the `npm run dev` demo. No persistence and no sink yet — Phase 3 (checkpointing) hasn't started.
+> **Status: Phase 3 complete.** All four trackers — Phase 1's sliding-window velocity counter and Phase 2's first-seen IP tracker, impossible travel detector, and scope escalation tracker — now checkpoint their combined state to a local JSON file after every event and restore it on startup, so a process restart no longer silently drops in-flight window/state. Still no external sink — Phase 4 (sink decision) hasn't started.
 
 ---
 
@@ -34,16 +34,17 @@
   - **First-seen IP tracker (`src/core/firstSeen.ts`):** per-actor `Set` of source IPs seen so far; flags an event from an IP not previously seen for that actor, including (by design) the actor's very first observed IP.
   - **Impossible travel detector (`src/core/impossibleTravel.ts`):** per-actor last-known `(lat, lon, timestamp)`; flags a new geo-tagged event if the implied speed from the previous point exceeds a configurable plausible-travel threshold (haversine great-circle distance ÷ time delta).
   - **Scope escalation tracker (`src/core/scopeEscalation.ts`):** per-actor `Set` of scopes ever exercised; flags a scope appearing for the first time — but only once the actor already has a baseline, so the very first event establishes scopes rather than "escalating" into them.
+- **Checkpointing (`src/core/checkpoint.ts`, Phase 3):** each of the four trackers above exposes `getState()`/`loadState()`, exporting its internal `Map`/`Set` state as plain JSON-serializable data. `CheckpointStore` bundles all four into one versioned JSON file (`.xylem-checkpoint.json`, gitignored — local disk only, not the Phase 4+ GCP Firestore target), saved via a single `checkpoint.save()` call site after every event and restored on startup if present. Checkpointing every event, rather than on an interval, keeps the store always current with no debouncing/dirty-flag logic — the right tradeoff at this project's demo-scale throughput.
 
 **🧪 Testing & Dev**
 
-- **Vitest:** Test runner — `tests/` mirrors `src/`, colocated by module. 30 tests covering the schema, the velocity counter (including the late/out-of-order case), the three Phase 2 signal trackers, both adapters (GitHub calls mocked via an injectable `fetchImpl`, never a real network call), and a domain-isolation arch test (`tests/arch.test.ts`).
+- **Vitest:** Test runner — `tests/` mirrors `src/`, colocated by module. 40 tests covering the schema, the velocity counter (including the late/out-of-order case), the three Phase 2 signal trackers, the Phase 3 checkpoint store, state round-trips for all four trackers, both adapters (GitHub calls mocked via an injectable `fetchImpl`, never a real network call), and a domain-isolation arch test (`tests/arch.test.ts`).
 - **tsx:** Runs TypeScript directly in dev without a separate build step.
 
 **☁️ Deployment (planned, Phase 4+)**
 
 - **GCP Pub/Sub** as the ingestion transport, replacing adapter-level polling.
-- **GCP Firestore** for checkpoint state (window recovery across restarts).
+- **GCP Firestore** as the checkpoint store's eventual backing store, replacing the local JSON file Phase 3 uses — enables restart survival across ephemeral GKE pods, not just a single machine's disk.
 - **GKE**, in the same shared-cluster namespace pattern already used by EventHorizon and Rhizome Lens.
 - Deployment target is GCP, not Railway — see [ADR 0003](docs/adr/0003-gcp-deployment-target.md) for the full reasoning, including the credits-vs-Always-Free distinction.
 
@@ -74,7 +75,7 @@ npm run dev
 XYLEM_ADAPTER=github-events-live GITHUB_USERNAME=<you> GITHUB_TOKEN=<token> npm run dev
 ```
 
-`npm run dev` prints one line per event: timestamp, actor, action, and the current sliding-window velocity for that actor, flagging `[VELOCITY BREACH]` at 3+ events in the window, `[FIRST-SEEN IP ...]` on a new source IP for that actor, `[IMPOSSIBLE TRAVEL ...km/h]` on a geo-implausible jump, and `[SCOPE ESCALATION ...]` on a new scope after a baseline is established. No persistence and no sink — this is a demo, not a running service.
+`npm run dev` prints one line per event: timestamp, actor, action, and the current sliding-window velocity for that actor, flagging `[VELOCITY BREACH]` at 3+ events in the window, `[FIRST-SEEN IP ...]` on a new source IP for that actor, `[IMPOSSIBLE TRAVEL ...km/h]` on a geo-implausible jump, and `[SCOPE ESCALATION ...]` on a new scope after a baseline is established. State checkpoints to `.xylem-checkpoint.json` after every event (override the path with `XYLEM_CHECKPOINT_FILE`) and is restored on the next run — printing `(resumed from checkpoint)` on startup when it finds one. Delete that file to start fresh. Still no external sink — this is a demo, not a running service.
 
 
 ## 🏗️ Architecture
@@ -98,6 +99,9 @@ flowchart LR
         IT["Impossible Travel\n(implemented)"]
         SE["Scope Escalation\n(implemented)"]
     end
+    subgraph Checkpoint
+        CP["CheckpointStore\n(implemented, local JSON)"]
+    end
     subgraph Sink
         S[Undecided—Phase 4]
     end
@@ -110,6 +114,11 @@ flowchart LR
     E --> IT
     E --> SE
     W --> V
+    W --> CP
+    FS --> CP
+    IT --> CP
+    SE --> CP
+    CP -.->|restore on startup| W
     V -.-> S
     FS -.-> S
     IT -.-> S
@@ -146,7 +155,7 @@ Per [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md), each phase i
 
 * [x] **Phase 1** — canonical `ApiActivityEvent` Zod schema, both adapters (`fixture-replay` and `github-events-live`) behind a shared interface, in-memory sliding-window velocity counter. No persistence, no external hookup.
 * [x] **Phase 2** — stateful signals that need running state rather than a window-only counter: first-seen IP tracker, impossible travel detector, scope escalation tracker (see [ADR 0001 addendum](docs/adr/0001-ingestion-target-stream-processor.md#addendum-2026-07-13-post-phase-1) for why scope escalation is in scope). First-seen tracking is IP-only for now — device/user-agent isn't in the `ApiActivityEvent` schema and no adapter currently supplies it.
-* [ ] **Phase 3** — checkpointing, so a process restart doesn't silently drop in-flight window/state.
+* [x] **Phase 3** — checkpointing, so a process restart doesn't silently drop in-flight window/state. Each tracker exports/imports its state via `getState()`/`loadState()`; `CheckpointStore` persists all four to a single local JSON file after every event and restores it on startup.
 * [ ] **Phase 4** — sink decision (standalone dashboard vs. EventHorizon vs. Sentinel-L7), made deliberately and by ADR when it's reached, not assumed now.
 
 ### 🔭 Deliberately Deferred
@@ -155,4 +164,4 @@ Per [ADR 0001](docs/adr/0001-ingestion-target-stream-processor.md), each phase i
 * **First-seen device/user-agent tracking** — `FirstSeenIpTracker` (Phase 2) covers source IP only; device/UA would need a new `ApiActivityEvent` field neither adapter currently populates, so it wasn't added speculatively.
 * **Failed-auth-burst signal** — named in ADR 0001's full signal set but not scoped into Phase 2 by the ADR's build order or its addendum; would need auth-event data neither adapter reliably carries today (see the `github-events-live` row above).
 * **Sentinel-L7 scored-output integration** — requires a fusion function on Xylem-L6's side (discrete signals → single score) and a SaaS-domain policy corpus on Sentinel-L7's side. Neither exists yet. See [ADR 0002](docs/adr/0002-sentinel-l7-integration-direction.md).
-* **GCP deployment (Pub/Sub, Firestore, GKE)** — architecturally decided ([ADR 0003](docs/adr/0003-gcp-deployment-target.md)) but not built; depends on Phase 1–3 landing first.
+* **GCP deployment (Pub/Sub, Firestore, GKE)** — architecturally decided ([ADR 0003](docs/adr/0003-gcp-deployment-target.md)) but not built; Phase 3's local-JSON checkpoint store is the placeholder Firestore will eventually replace.

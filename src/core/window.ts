@@ -2,6 +2,11 @@ export interface SlidingWindowVelocityCounterOptions {
   windowMs: number;
 }
 
+export interface SlidingWindowVelocityCounterState {
+  timestampsByActor: [string, number[]][];
+  watermarkByActor: [string, number][];
+}
+
 /**
  * Windowing is driven by event time (the `atMs` passed per call), not
  * wall-clock processing time, so a late-arriving event is placed relative to
@@ -51,5 +56,23 @@ export class SlidingWindowVelocityCounter {
   private windowCount(timestamps: number[], atMs: number): number {
     const cutoff = atMs - this.windowMs;
     return timestamps.filter((t) => t >= cutoff && t <= atMs).length;
+  }
+
+  getState(): SlidingWindowVelocityCounterState {
+    return {
+      timestampsByActor: [...this.timestampsByActor.entries()],
+      watermarkByActor: [...this.watermarkByActor.entries()],
+    };
+  }
+
+  loadState(state: SlidingWindowVelocityCounterState): void {
+    this.timestampsByActor.clear();
+    for (const [actorId, timestamps] of state.timestampsByActor) {
+      this.timestampsByActor.set(actorId, timestamps);
+    }
+    this.watermarkByActor.clear();
+    for (const [actorId, watermark] of state.watermarkByActor) {
+      this.watermarkByActor.set(actorId, watermark);
+    }
   }
 }

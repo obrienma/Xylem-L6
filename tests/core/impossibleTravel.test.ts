@@ -39,4 +39,15 @@ describe("ImpossibleTravelDetector", () => {
     detector.record("amanda", 0, 40.7128, -74.006);
     expect(detector.record("obrienma", 0, 51.5074, -0.1278)).toBeNull();
   });
+
+  it("round-trips state through getState/loadState", () => {
+    const detector = new ImpossibleTravelDetector({ maxPlausibleSpeedKmh: 900 });
+    detector.record("amanda", 0, 40.7128, -74.006); // NYC
+
+    const restored = new ImpossibleTravelDetector({ maxPlausibleSpeedKmh: 900 });
+    restored.loadState(detector.getState());
+
+    const result = restored.record("amanda", 3_600_000, 51.5074, -0.1278); // London, 1 hour later
+    expect(result?.isImpossible).toBe(true);
+  });
 });

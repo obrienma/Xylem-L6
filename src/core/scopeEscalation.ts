@@ -11,6 +11,10 @@ export interface ScopeEscalationResult {
  * FirstSeenIpTracker (see ADR 0001 addendum) — not the window-only counting
  * SlidingWindowVelocityCounter does.
  */
+export interface ScopeEscalationTrackerState {
+  seenScopesByActor: [string, string[]][];
+}
+
 export class ScopeEscalationTracker {
   private readonly seenScopesByActor = new Map<string, Set<string>>();
 
@@ -26,5 +30,18 @@ export class ScopeEscalationTracker {
     this.seenScopesByActor.set(actorId, scopeSet);
 
     return { newScopes, isEscalation: hadBaseline && newScopes.length > 0 };
+  }
+
+  getState(): ScopeEscalationTrackerState {
+    return {
+      seenScopesByActor: [...this.seenScopesByActor.entries()].map(([actorId, scopes]) => [actorId, [...scopes]]),
+    };
+  }
+
+  loadState(state: ScopeEscalationTrackerState): void {
+    this.seenScopesByActor.clear();
+    for (const [actorId, scopes] of state.seenScopesByActor) {
+      this.seenScopesByActor.set(actorId, new Set(scopes));
+    }
   }
 }

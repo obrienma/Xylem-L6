@@ -31,6 +31,10 @@ export interface ImpossibleTravelDetectorOptions {
  * FirstSeenIpTracker — not a window: only the single most recent point
  * matters, not a history of them.
  */
+export interface ImpossibleTravelDetectorState {
+  lastByActor: [string, { atMs: number; lat: number; lon: number }][];
+}
+
 export class ImpossibleTravelDetector {
   private readonly maxPlausibleSpeedKmh: number;
   private readonly lastByActor = new Map<string, { atMs: number; lat: number; lon: number }>();
@@ -51,5 +55,16 @@ export class ImpossibleTravelDetector {
     const speedKmh = hours === 0 ? Infinity : distanceKm / hours;
 
     return { distanceKm, speedKmh, isImpossible: speedKmh > this.maxPlausibleSpeedKmh };
+  }
+
+  getState(): ImpossibleTravelDetectorState {
+    return { lastByActor: [...this.lastByActor.entries()] };
+  }
+
+  loadState(state: ImpossibleTravelDetectorState): void {
+    this.lastByActor.clear();
+    for (const [actorId, point] of state.lastByActor) {
+      this.lastByActor.set(actorId, point);
+    }
   }
 }
