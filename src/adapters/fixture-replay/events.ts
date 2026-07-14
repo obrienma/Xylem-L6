@@ -15,6 +15,8 @@ function event(overrides: Partial<ApiActivityEvent> & { id: string; action: stri
     timestamp: new Date(base),
     actor: { id: "amanda", type: "user" },
     resource: "repo:obrienma/xylem-l6",
+    sourceIp: "203.0.113.10",
+    geo: { country: "US", lat: 40.7128, lon: -74.006 },
     outcome: "success",
     scopes: [],
     provider: "fixture-replay",
@@ -30,6 +32,13 @@ function event(overrides: Partial<ApiActivityEvent> & { id: string; action: stri
  * - a late/out-of-order arrival: emitted last, but its own timestamp falls
  *   inside the earlier burst window (evt-6) — exercises the watermark-based
  *   retention in SlidingWindowVelocityCounter.
+ * - a new source IP for the same actor (evt-7) — exercises FirstSeenIpTracker
+ *   flagging a first-seen IP after a baseline has already been established.
+ * - a geo-implausible jump for the same actor, NYC to London an hour later
+ *   (evt-8) — exercises ImpossibleTravelDetector.
+ * - a scope baseline (evt-9) followed by a new, broader scope for the same
+ *   actor (evt-10) — exercises ScopeEscalationTracker flagging escalation
+ *   only after a baseline is established.
  */
 export const defaultSchedule: FixtureScheduleEntry[] = [
   {
@@ -54,6 +63,47 @@ export const defaultSchedule: FixtureScheduleEntry[] = [
   },
   {
     event: event({ id: "evt-6", action: "repo.push", timestamp: new Date(iso(61_500)) }),
+    delayMs: 10,
+  },
+  {
+    event: event({
+      id: "evt-7",
+      action: "repo.push",
+      timestamp: new Date(iso(610_000)),
+      sourceIp: "198.51.100.42",
+    }),
+    delayMs: 10,
+  },
+  {
+    event: event({
+      id: "evt-8",
+      action: "repo.push",
+      timestamp: new Date(iso(4_210_000)), // 1 hour after evt-7
+      sourceIp: "198.51.100.42",
+      geo: { country: "GB", lat: 51.5074, lon: -0.1278 },
+    }),
+    delayMs: 10,
+  },
+  {
+    event: event({
+      id: "evt-9",
+      action: "repo.push",
+      timestamp: new Date(iso(4_220_000)),
+      sourceIp: "198.51.100.42",
+      geo: { country: "GB", lat: 51.5074, lon: -0.1278 },
+      scopes: ["repo:read"],
+    }),
+    delayMs: 10,
+  },
+  {
+    event: event({
+      id: "evt-10",
+      action: "repo.admin.settings_update",
+      timestamp: new Date(iso(4_230_000)),
+      sourceIp: "198.51.100.42",
+      geo: { country: "GB", lat: 51.5074, lon: -0.1278 },
+      scopes: ["repo:read", "repo:admin"],
+    }),
     delayMs: 10,
   },
 ];

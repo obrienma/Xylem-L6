@@ -1,10 +1,14 @@
 import type { ActivityAdapter } from "./core/adapter.js";
 import { SlidingWindowVelocityCounter } from "./core/window.js";
+import { FirstSeenIpTracker } from "./core/firstSeen.js";
+import { ImpossibleTravelDetector } from "./core/impossibleTravel.js";
+import { ScopeEscalationTracker } from "./core/scopeEscalation.js";
 import { FixtureReplayAdapter } from "./adapters/fixture-replay/index.js";
 import { GithubEventsLiveAdapter } from "./adapters/github-events-live/index.js";
 
 const WINDOW_MS = 120_000;
 const VELOCITY_BREACH_THRESHOLD = 3;
+const MAX_PLAUSIBLE_SPEED_KMH = 900; // roughly a commercial jet's cruising speed
 
 function resolveAdapter(): ActivityAdapter {
   const which = process.env.XYLEM_ADAPTER ?? "fixture-replay";
@@ -28,14 +32,39 @@ function resolveAdapter(): ActivityAdapter {
 async function main(): Promise<void> {
   const adapter = resolveAdapter();
   const counter = new SlidingWindowVelocityCounter({ windowMs: WINDOW_MS });
+  const firstSeenIps = new FirstSeenIpTracker();
+  const impossibleTravel = new ImpossibleTravelDetector({ maxPlausibleSpeedKmh: MAX_PLAUSIBLE_SPEED_KMH });
+  const scopeEscalation = new ScopeEscalationTracker();
 
-  console.log(`Xylem-L6 — Phase 1 demo, adapter: ${adapter.name}, window: ${WINDOW_MS}ms`);
+  console.log(`Xylem-L6 — Phase 2 demo, adapter: ${adapter.name}, window: ${WINDOW_MS}ms`);
 
   for await (const activityEvent of adapter.stream()) {
     const velocity = counter.record(activityEvent.actor.id, activityEvent.timestamp.getTime());
     const breach = velocity >= VELOCITY_BREACH_THRESHOLD ? " [VELOCITY BREACH]" : "";
+
+    const isFirstSeenIp = activityEvent.sourceIp
+      ? firstSeenIps.record(activityEvent.actor.id, activityEvent.sourceIp)
+      : false;
+    const firstSeen = isFirstSeenIp ? ` [FIRST-SEEN IP ${activityEvent.sourceIp}]` : "";
+
+    const travel =
+      activityEvent.geo?.lat !== undefined && activityEvent.geo.lon !== undefined
+        ? impossibleTravel.record(
+            activityEvent.actor.id,
+            activityEvent.timestamp.getTime(),
+            activityEvent.geo.lat,
+            activityEvent.geo.lon,
+          )
+        : null;
+    const impossible = travel?.isImpossible ? ` [IMPOSSIBLE TRAVEL ${Math.round(travel.speedKmh)}km/h]` : "";
+
+    const escalation = scopeEscalation.record(activityEvent.actor.id, activityEvent.scopes);
+    const scopeEscalationFlag = escalation.isEscalation
+      ? ` [SCOPE ESCALATION ${escalation.newScopes.join(",")}]`
+      : "";
+
     console.log(
-      `${activityEvent.timestamp.toISOString()} actor=${activityEvent.actor.id} action=${activityEvent.action} velocity=${velocity}${breach}`,
+      `${activityEvent.timestamp.toISOString()} actor=${activityEvent.actor.id} action=${activityEvent.action} velocity=${velocity}${breach}${firstSeen}${impossible}${scopeEscalationFlag}`,
     );
   }
 }
