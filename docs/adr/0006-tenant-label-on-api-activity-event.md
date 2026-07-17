@@ -1,6 +1,6 @@
 # ADR 0006 — Tenant Label on `ApiActivityEvent`
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-16
 
 ---
@@ -64,3 +64,14 @@ Making the field optional rather than required avoids inventing tenant identity 
 - Tracker state (`checkpoint.ts`) remains single-tenant-shaped. This is a stated, deliberate limitation, not an oversight — revisit trigger: a second real tenant enters the system. The multi-tenant fixture scenario makes this limitation demonstrable, not resolved.
 - The structured output payload that will eventually carry this field to Sentinel-L7 is still undesigned — this ADR does not authorize or design that wiring.
 - Fixture data and the `github-events-live` adapter are unaffected in schema terms; neither needs to change to remain valid, though `fixture-replay`'s event schedule does need the tenant-authoring revision above.
+
+## Addendum (2026-07-16, implementation)
+
+Implemented the same day this ADR was written. Recorded separately, rather than editing the Decision/Consequences text above, since that text was an accurate account of what was decided *before* implementation.
+
+- `tenant: z.string().optional()` added to `ApiActivityEventSchema` (`src/core/types.ts`).
+- `fixture-replay`'s schedule (`src/adapters/fixture-replay/events.ts`) revised: all pre-existing events (`evt-1`..`evt-10`) now carry `tenant: "acme-corp"`. Three new events (`evt-11`..`evt-13`) were added, interleaved by timestamp, giving `chen` events at two different tenants — `acme-corp`, `globex`, `acme-corp` — with the middle (`globex`) event's `actor.id` colliding with the other two.
+- That collision is schema-valid and now demonstrable: run against `SlidingWindowVelocityCounter`, the three `chen` events produce velocities `[1, 2, 3]`, breaching `index.ts`'s `VELOCITY_BREACH_THRESHOLD = 3` on the third event — even though only two of the three are really `acme-corp`. This is the exact false-positive shape this ADR's Decision section named as a hypothetical; it's now an exercised path, not just documented. As an unplanned but consistent side effect (different geo assigned to the `globex` event, for realism), the same collision also trips `ImpossibleTravelDetector` — the same root cause, tenant-blind keying, surfacing in a second tracker.
+- `index.ts`'s demo console line now prints `tenant=...` alongside `actor=...`, since without it the field would be parsed but never observed anywhere — the ADR's "at least one real exercised path... to whatever downstream consumer eventually reads it" had no consumer to reach otherwise. This is scoped to the existing demo log line only; it is not the structured Sentinel-L7 output payload, which this ADR still does not design.
+- Tracker keying itself is unchanged, per the Decision section — the breach above is presented as-is, not corrected. The revisit trigger (a second real tenant) remains the condition for composite-keying, not this demonstration.
+- New tests: `tests/core/types.test.ts` (tenant optional/present), `tests/adapters/fixture-replay.test.ts` (two distinct tenants present; the `chen` collision produces `[1, 2, 3]` velocities through the real counter).

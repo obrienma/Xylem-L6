@@ -20,6 +20,7 @@ export const ApiActivityEventSchema = z.object({
   outcome: z.enum(["success", "failure"]),
   scopes: z.array(z.string()).default([]),
   provider: z.enum(["fixture-replay", "github-events-live", "okta"]),
+  tenant: z.string().optional(),
 });
 
 export type ApiActivityEvent = z.infer<typeof ApiActivityEventSchema>;

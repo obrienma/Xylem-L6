@@ -4,10 +4,15 @@ repo: xylem-l6
 title: "Xylem-L6 Tenant Label Decision (ADR 0006 — Optional `tenant` on `ApiActivityEvent`)"
 date: 2026-07-16
 phase: 4
-tags: [adr, decision-record, tenant, multi-tenancy, schema, optional-field, fixture-replay, sentinel-l7, ledger-l5, cross-repo]
+tags: [adr, decision-record, tenant, multi-tenancy, schema, optional-field, fixture-replay, sentinel-l7, ledger-l5, cross-repo, velocity-counter, false-positive]
 files:
   - docs/adr/0006-tenant-label-on-api-activity-event.md
   - README.md
+  - src/core/types.ts
+  - src/adapters/fixture-replay/events.ts
+  - src/index.ts
+  - tests/core/types.test.ts
+  - tests/adapters/fixture-replay.test.ts
 ---
 
 ### Pattern: Originating a Label Upstream, Before There's Something Live to Retrofit
@@ -32,6 +37,27 @@ Xylem-L6 is still pre-wiring, avoids that retrofit entirely. It's also scoped
 narrowly on purpose: a passthrough field is deliberately kept smaller than
 the isolation/auth infrastructure Sentinel-L7's ADR-0020 already declined to
 build — this ADR doesn't quietly reopen that decision from a different repo.
+
+### Pattern: Proving a Documented Limitation Through a Real Tracker Run, Not Just Prose
+The fixture scenario doesn't just assert "two tenants exist" schema-side —
+`tests/adapters/fixture-replay.test.ts` pipes the three colliding `chen`
+events through the actual `SlidingWindowVelocityCounter` and asserts the
+resulting velocities are `[1, 2, 3]`, breaching `VELOCITY_BREACH_THRESHOLD`.
+Running `npm run dev` shows the same thing live: a `[VELOCITY BREACH]` tag
+on an event that's only the second real `acme-corp` event for that actor.
+The ADR's "make the limitation visible, not just documented" goal is now
+backed by executable proof, not a paragraph asserting it would happen.
+
+### Anti-Pattern Avoided: Fixing a Bug the ADR Explicitly Didn't Ask to Fix
+Once the collision scenario was working and visibly producing a false
+`[VELOCITY BREACH]`, the natural next instinct was to composite-key the
+trackers right there, since the fix is small and the bug is now staring back
+from the terminal. That was deliberately not done — ADR 0006's Decision
+section is explicit that tracker keying stays `actor.id`-only until a second
+*real* tenant exists, and the revisit trigger is that event, not "the
+demonstration made it feel urgent." Demonstrating a limitation and fixing it
+are different acts; conflating them here would have gone beyond what was
+decided.
 
 ### Challenge: Resolving a Garbled Cross-Repo ADR Reference
 The Context section's draft arrived with an ambiguous citation — a
@@ -68,5 +94,27 @@ constructed on purpose. The ADR commits to revising the fixture schedule to
 interleave at least two synthetic tenants (e.g. `acme-corp`, `globex`) so the
 single-tenant tracker-keying limitation becomes something the demo can
 actually show — an `actor.id` collision across two tenants — rather than
-staying a documented hypothetical. That revision is not yet done as of this
-ADR.
+staying a documented hypothetical.
+
+### Decision: Append the Collision Scenario, Rather Than Splicing It Into evt-1..10
+The new tenant events (`evt-11`..`evt-13`) were added after the existing
+ten rather than interleaved by array position among them. `evt-1`..`evt-10`
+already carry meaning tied to their exact positions and delays (the burst,
+the gap, the late arrival) and two existing tests read `defaultSchedule`
+directly — one indexes `defaultSchedule[0]`, the other checks the whole
+schedule is schema-valid and includes at least one out-of-order timestamp.
+Appending a self-contained, internally-interleaved block (the three `chen`
+events are interleaved with *each other*, just not spliced into the earlier
+block) satisfies the ADR's "interleaved, not segregated into separate runs"
+requirement — the two tenants share one schedule and one `stream()` call —
+without risking either existing test or the burst/gap/late-arrival scenarios
+they were built to prove.
+
+### Decision: Print `tenant` in the Demo's Existing Console Line
+`index.ts`'s one console.log line is still the only place any event field is
+ever observed — no structured payload exists yet. Adding `tenant=...`
+alongside `actor=...` there was judged to be the minimal change needed for
+the field to have a real, visible, exercised path, consistent with the
+ADR's own stated goal, rather than a new feature — nothing about the ADR's
+scope boundary (the undesigned Sentinel-L7 output payload) is touched by
+extending an existing debug line.

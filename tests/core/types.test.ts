@@ -26,4 +26,13 @@ describe("ApiActivityEventSchema", () => {
     const invalid = { ...validEvent, provider: "slack" };
     expect(ApiActivityEventSchema.safeParse(invalid).success).toBe(false);
   });
+
+  it("accepts an event with no tenant set", () => {
+    expect(ApiActivityEventSchema.safeParse(validEvent).success).toBe(true);
+  });
+
+  it("accepts an event with a tenant set", () => {
+    const withTenant = { ...validEvent, tenant: "acme-corp" };
+    expect(ApiActivityEventSchema.safeParse(withTenant).success).toBe(true);
+  });
 });

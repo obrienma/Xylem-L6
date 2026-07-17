@@ -20,6 +20,7 @@ function event(overrides: Partial<ApiActivityEvent> & { id: string; action: stri
     outcome: "success",
     scopes: [],
     provider: "fixture-replay",
+    tenant: "acme-corp",
     ...overrides,
   } as ApiActivityEvent;
 }
@@ -39,6 +40,12 @@ function event(overrides: Partial<ApiActivityEvent> & { id: string; action: stri
  * - a scope baseline (evt-9) followed by a new, broader scope for the same
  *   actor (evt-10) — exercises ScopeEscalationTracker flagging escalation
  *   only after a baseline is established.
+ * - a second synthetic tenant, "globex" (evt-11..13), interleaved with a
+ *   "chen" actor id that collides with a distinct "acme-corp" "chen" — per
+ *   ADR 0006, this demonstrates (not fixes) the single-tenant tracker-
+ *   keying limitation: two real acme-corp events plus one globex event,
+ *   sharing only an actor id, combine into a false velocity breach because
+ *   SlidingWindowVelocityCounter keys on actor.id alone.
  */
 export const defaultSchedule: FixtureScheduleEntry[] = [
   {
@@ -103,6 +110,38 @@ export const defaultSchedule: FixtureScheduleEntry[] = [
       sourceIp: "198.51.100.42",
       geo: { country: "GB", lat: 51.5074, lon: -0.1278 },
       scopes: ["repo:read", "repo:admin"],
+    }),
+    delayMs: 10,
+  },
+  {
+    event: event({
+      id: "evt-11",
+      action: "repo.push",
+      timestamp: new Date(iso(5_000_000)),
+      actor: { id: "chen", type: "user" },
+      tenant: "acme-corp",
+    }),
+    delayMs: 10,
+  },
+  {
+    event: event({
+      id: "evt-12",
+      action: "repo.push",
+      timestamp: new Date(iso(5_010_000)),
+      actor: { id: "chen", type: "user" },
+      tenant: "globex",
+      sourceIp: "192.0.2.77",
+      geo: { country: "DE", lat: 52.52, lon: 13.405 },
+    }),
+    delayMs: 10,
+  },
+  {
+    event: event({
+      id: "evt-13",
+      action: "repo.push",
+      timestamp: new Date(iso(5_020_000)),
+      actor: { id: "chen", type: "user" },
+      tenant: "acme-corp",
     }),
     delayMs: 10,
   },

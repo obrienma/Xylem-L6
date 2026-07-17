@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     });
 
     console.log(
-      `${activityEvent.timestamp.toISOString()} actor=${activityEvent.actor.id} action=${activityEvent.action} velocity=${velocity}${breach}${firstSeen}${impossible}${scopeEscalationFlag}`,
+      `${activityEvent.timestamp.toISOString()} tenant=${activityEvent.tenant ?? "-"} actor=${activityEvent.actor.id} action=${activityEvent.action} velocity=${velocity}${breach}${firstSeen}${impossible}${scopeEscalationFlag}`,
     );
   }
 }

@@ -39,6 +39,28 @@ Extra: xylem-l6 · Anti-Pattern Avoided: Retrofitting Identity Onto a Live Syste
 See: docs/journal/xylem-l6-2026-07-16T1500-tenant-label-on-api-activity-event.md
 
 ---
+type: cloze
+deck: Rhizome::xylem-l6
+tags: [xylem-l6, testing, velocity-counter]
+---
+`tests/adapters/fixture-replay.test.ts` proves the cross-tenant false-positive isn't just asserted in prose: it pipes the three colliding `chen` events through the real `SlidingWindowVelocityCounter` and asserts the resulting velocities are `{{c1::[1, 2, 3]}}`, breaching the threshold on the third event.
+
+Extra: xylem-l6 · Pattern: Proving a Documented Limitation Through a Real Tracker Run, Not Just Prose
+See: docs/journal/xylem-l6-2026-07-16T1500-tenant-label-on-api-activity-event.md
+
+---
+type: basic
+deck: Rhizome::xylem-l6
+tags: [xylem-l6, anti-pattern, scope-discipline]
+---
+Q: Once the `chen` collision scenario was working and visibly producing a false `[VELOCITY BREACH]`, why wasn't the tracker keying fixed right there?
+
+A: ADR 0006's Decision section is explicit that tracker keying stays `actor.id`-only until a second *real* tenant exists — the revisit trigger is that event, not "the demonstration made the bug feel urgent." Demonstrating a limitation and fixing it are different acts; fixing it here would have gone beyond what the ADR actually decided.
+
+Extra: xylem-l6 · Anti-Pattern Avoided: Fixing a Bug the ADR Explicitly Didn't Ask to Fix
+See: docs/journal/xylem-l6-2026-07-16T1500-tenant-label-on-api-activity-event.md
+
+---
 type: basic
 deck: Rhizome::xylem-l6
 tags: [xylem-l6, challenge]
@@ -80,4 +102,26 @@ Q: Why is `fixture-replay`, not `github-events-live`, the adapter ADR 0006 commi
 A: `github-events-live` has no tenant boundary in its source data — a GitHub username isn't a customer, so any tenant value there would be synthetic at the adapter-config level. A future Okta-shaped adapter would derive tenant structurally (one org's System Log is one tenant), not per-event. Hand-authored fixtures are the only place a multi-tenant scenario — e.g. two tenants sharing an `actor.id` — can be constructed on purpose, which is also exactly why `fixture-replay` exists per ADR-0001.
 
 Extra: xylem-l6 · Decision: Demonstrate the Field via fixture-replay, Not github-events-live
+See: docs/journal/xylem-l6-2026-07-16T1500-tenant-label-on-api-activity-event.md
+
+---
+type: basic
+deck: Rhizome::xylem-l6
+tags: [xylem-l6, decision, testing]
+---
+Q: Why were the new `chen` collision events (`evt-11`..`evt-13`) appended after `evt-1`..`evt-10` instead of spliced into the existing schedule by array position?
+
+A: `evt-1`..`evt-10` already carry meaning tied to their exact positions and delays (the burst, the gap, the late arrival), and two existing tests read `defaultSchedule` directly, including one that checks the whole schedule stays schema-valid and includes an out-of-order timestamp. Appending a self-contained block — where the three `chen` events are interleaved with *each other*, just not spliced into the earlier block — satisfies ADR 0006's "interleaved, not segregated into separate runs" requirement (one schedule, one `stream()` call) without risking the existing burst/gap/late-arrival scenarios or their tests.
+
+Extra: xylem-l6 · Decision: Append the Collision Scenario, Rather Than Splicing It Into evt-1..10
+See: docs/journal/xylem-l6-2026-07-16T1500-tenant-label-on-api-activity-event.md
+
+---
+type: cloze
+deck: Rhizome::xylem-l6
+tags: [xylem-l6, decision, observability]
+---
+`tenant=...` was added to `index.ts`'s existing demo console line rather than left unprinted, because that line is `{{c1::the only place any event field is ever observed}}` — without it, the field would be schema-valid but never actually seen by anything.
+
+Extra: xylem-l6 · Decision: Print tenant in the Demo's Existing Console Line
 See: docs/journal/xylem-l6-2026-07-16T1500-tenant-label-on-api-activity-event.md
