@@ -17,6 +17,14 @@ export interface FusedScore {
   score: number;
   /** Which signal(s) produced `score` — may be more than one on a tie. */
   signals: FusionSignal[];
+  /**
+   * How many of the four signals fired at all (nonzero severity), not just
+   * which one(s) tied for the max. ADR 0005 deliberately discards this at
+   * scoring time (max-of-signals can't distinguish one strong signal from
+   * several weak ones); ADR 0008 recovers it for a downstream consumer
+   * without changing the score itself.
+   */
+  firedCount: number;
 }
 
 function clamp01(value: number): number {
@@ -44,6 +52,7 @@ export function fuseSignals(input: FusionInput): FusedScore {
   const signals = (Object.keys(severities) as FusionSignal[]).filter(
     (signal) => score > 0 && severities[signal] === score,
   );
+  const firedCount = Object.values(severities).filter((severity) => severity > 0).length;
 
-  return { score, signals };
+  return { score, signals, firedCount };
 }

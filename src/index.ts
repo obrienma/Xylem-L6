@@ -5,11 +5,16 @@ import { ImpossibleTravelDetector } from "./core/impossibleTravel.js";
 import { ScopeEscalationTracker } from "./core/scopeEscalation.js";
 import { CheckpointStore } from "./core/checkpoint.js";
 import { VELOCITY_BREACH_THRESHOLD, MAX_PLAUSIBLE_SPEED_KMH } from "./core/thresholds.js";
+import { fuseSignals } from "./core/fusion.js";
 import { FixtureReplayAdapter } from "./adapters/fixture-replay/index.js";
 import { GithubEventsLiveAdapter } from "./adapters/github-events-live/index.js";
+import { SynapseL4Sink, SynapseIngestError } from "./sinks/synapse-l4/index.js";
 
 const WINDOW_MS = 120_000;
 const CHECKPOINT_FILE_PATH = process.env.XYLEM_CHECKPOINT_FILE ?? ".xylem-checkpoint.json";
+// Opt-in, like XYLEM_ADAPTER's github-events-live path — the default `npm run dev`
+// demo stays zero-dependency; sending to Synapse-L4 (ADR 0007/0008) is a deliberate choice.
+const SYNAPSE_L4_ENABLED = process.env.XYLEM_SYNAPSE_L4_ENABLED === "true";
 
 function resolveAdapter(): ActivityAdapter {
   const which = process.env.XYLEM_ADAPTER ?? "fixture-replay";
@@ -37,6 +42,7 @@ async function main(): Promise<void> {
   const impossibleTravel = new ImpossibleTravelDetector({ maxPlausibleSpeedKmh: MAX_PLAUSIBLE_SPEED_KMH });
   const scopeEscalation = new ScopeEscalationTracker();
   const checkpoint = new CheckpointStore({ filePath: CHECKPOINT_FILE_PATH });
+  const synapseSink = SYNAPSE_L4_ENABLED ? new SynapseL4Sink() : null;
 
   const restored = checkpoint.load();
   if (restored) {
@@ -47,7 +53,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `Xylem-L6 — Phase 3 demo, adapter: ${adapter.name}, window: ${WINDOW_MS}ms${restored ? " (resumed from checkpoint)" : ""}`,
+    `Xylem-L6 — Phase 3 demo, adapter: ${adapter.name}, window: ${WINDOW_MS}ms${restored ? " (resumed from checkpoint)" : ""}${synapseSink ? ", Synapse-L4 sink: enabled" : ""}`,
   );
 
   for await (const activityEvent of adapter.stream()) {
@@ -75,6 +81,17 @@ async function main(): Promise<void> {
       ? ` [SCOPE ESCALATION ${escalation.newScopes.join(",")}]`
       : "";
 
+    const fused = fuseSignals({ velocity, isFirstSeenIp, impossibleTravel: travel, scopeEscalation: escalation });
+
+    if (synapseSink) {
+      try {
+        await synapseSink.send(activityEvent, fused);
+      } catch (err) {
+        const detail = err instanceof SynapseIngestError ? err.message : String(err);
+        console.error(`  [SYNAPSE-L4 SEND FAILED] ${detail}`);
+      }
+    }
+
     checkpoint.save({
       velocity: counter.getState(),
       firstSeenIps: firstSeenIps.getState(),
@@ -83,7 +100,7 @@ async function main(): Promise<void> {
     });
 
     console.log(
-      `${activityEvent.timestamp.toISOString()} tenant=${activityEvent.tenant ?? "-"} actor=${activityEvent.actor.id} action=${activityEvent.action} velocity=${velocity}${breach}${firstSeen}${impossible}${scopeEscalationFlag}`,
+      `${activityEvent.timestamp.toISOString()} tenant=${activityEvent.tenant ?? "-"} actor=${activityEvent.actor.id} action=${activityEvent.action} velocity=${velocity}${breach}${firstSeen}${impossible}${scopeEscalationFlag} score=${fused.score.toFixed(2)} fired=${fused.firedCount}`,
     );
   }
 }

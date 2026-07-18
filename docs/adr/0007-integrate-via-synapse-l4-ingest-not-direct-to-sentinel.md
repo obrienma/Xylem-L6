@@ -1,6 +1,6 @@
 # ADR 0007 — Integration Target: Synapse-L4's `POST /ingest`, Not Sentinel-L7 Directly
 
-**Status:** Accepted
+**Status:** Accepted (payload contract specified by ADR 0008 — this ADR fixed the transport target and a rough field list; ADR 0008 corrects its `source_id` claim and fully specifies the `status`/`metric_value`/`domain` mapping. Read alongside ADR 0008.)
 **Date:** 2026-07-17
 
 ---
