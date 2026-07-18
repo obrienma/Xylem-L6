@@ -4,12 +4,11 @@ import { FirstSeenIpTracker } from "./core/firstSeen.js";
 import { ImpossibleTravelDetector } from "./core/impossibleTravel.js";
 import { ScopeEscalationTracker } from "./core/scopeEscalation.js";
 import { CheckpointStore } from "./core/checkpoint.js";
+import { VELOCITY_BREACH_THRESHOLD, MAX_PLAUSIBLE_SPEED_KMH } from "./core/thresholds.js";
 import { FixtureReplayAdapter } from "./adapters/fixture-replay/index.js";
 import { GithubEventsLiveAdapter } from "./adapters/github-events-live/index.js";
 
 const WINDOW_MS = 120_000;
-const VELOCITY_BREACH_THRESHOLD = 3;
-const MAX_PLAUSIBLE_SPEED_KMH = 900; // roughly a commercial jet's cruising speed
 const CHECKPOINT_FILE_PATH = process.env.XYLEM_CHECKPOINT_FILE ?? ".xylem-checkpoint.json";
 
 function resolveAdapter(): ActivityAdapter {

@@ -3,7 +3,7 @@ id: xylem-l6-2026-07-16T1500-tenant-label-on-api-activity-event
 repo: xylem-l6
 title: "Xylem-L6 Tenant Label Decision (ADR 0006 — Optional `tenant` on `ApiActivityEvent`)"
 date: 2026-07-16
-phase: 4
+phase: 5
 tags: [adr, decision-record, tenant, multi-tenancy, schema, optional-field, fixture-replay, sentinel-l7, ledger-l5, cross-repo, velocity-counter, false-positive]
 files:
   - docs/adr/0006-tenant-label-on-api-activity-event.md
