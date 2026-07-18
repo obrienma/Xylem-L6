@@ -1,6 +1,6 @@
 # ADR 0002 — Sentinel-L7 Integration Direction (Forward-Looking, Not Committed)
 
-**Status:** Proposed — documents direction, not a build decision
+**Status:** Proposed — documents direction, not a build decision (amended 2026-07-17 — the Decision section's claim that Synapse-L4 integrates with Sentinel-L7 "over Sentinel-L7's existing MCP endpoint" is factually wrong: Synapse-L4's actual client delivers Axioms via direct Redis `XADD`, no MCP involved. The underlying principle — reuse the existing pattern rather than inventing a second integration shape — still holds and is acted on in ADR 0007, just via the corrected mechanism.)
 **Date:** 2026-07-13
 
 ---

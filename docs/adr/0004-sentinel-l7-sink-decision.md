@@ -1,6 +1,6 @@
 # ADR 0004 — Xylem-L6 Phase 4 Sink Decision: Sentinel-L7
 
-**Status:** Accepted
+**Status:** Accepted (superseded on transport by ADR 0007 — Sentinel-L7 remains the eventual consumer named below, but Xylem-L6 integrates via Synapse-L4's `POST /ingest`, not by writing to Sentinel-L7 directly. This ADR's "sink" framing didn't specify a transport at all; ADR 0007 fills that gap and should be read alongside this one.)
 **Date:** 2026-07-14
 
 ---
