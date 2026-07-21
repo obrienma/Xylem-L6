@@ -57,3 +57,41 @@ Surfacing `firedCount` as `metric_value` turns a previously-discarded computatio
 - ~~`synapse-l4`'s `ComplianceDomain` Literal and `extractor.py`'s mirrored frozenset need a `"saas"` addition before this integration is real.~~ **Resolved 2026-07-17** (later the same day this ADR was written): both now include `"saas"` (`axiom.py`'s `ComplianceDomain`, `extractor.py`'s `_VALID_DOMAINS`, and its LLM system prompt). This was the last named blocker on this ADR's Decision; `domain: "saas"` now survives `_valid_domain()` instead of being silently dropped.
 - No auth exists on `POST /ingest` today (confirmed: no dependency/header check in `src/api/ingest.py` or `main.py`) — this ADR adds none, matching the endpoint's current pre-production posture. Revisit if `synapse-l4` adds auth before this integration runs anywhere beyond local dev.
 - **The Rationale's "exactly one definition" claim has a real limit: the Judge thresholds still end up duplicated as TypeScript literals.** There is no mechanism to import a Python module's constants into a TypeScript one across repos, so `0.8`/`0.5` are copied into Xylem-L6's sink module as plain numbers, with a comment citing `synapse-l4/src/evaluation/rules.py` as the source of truth. If Synapse-L4's thresholds change, Xylem-L6's copy goes stale silently — a cross-language version of exactly the drift ADR 0005 mechanically eliminated within one codebase via `src/core/thresholds.ts`, but can't eliminate across two. Accepted because there's no cheaper fix available today; revisit if this integration graduates beyond a demo and a shared schema/contract-testing mechanism becomes worth building.
+
+## Addendum (2026-07-18) — `tenant` field
+
+ADR 0006 added an optional `tenant` field to `ApiActivityEvent` and demonstrated it via a real fixture collision, but explicitly left "whether and how it propagates into a structured output payload" undesigned. This ADR's payload mapping — written the next day — didn't include it either: `buildIngestPayload()` (`src/sinks/synapse-l4/index.ts`) maps `source_id`, `status`, `metric_value`, `anomaly_score`, and the constant `domain: "saas"`, but reads nothing from `event.tenant`. Sentinel-L7 ADR-0031 (tenant label passthrough on `compliance_events`) depends on this field reaching Synapse-L4's payload; as of this addendum it does not.
+
+**`buildIngestPayload()` gains a conditional `tenant` field, mirroring how `domain` is handled on the receiving side (`SentinelClient.post_axiom`'s `if axiom.domain is not None`) rather than always present:**
+
+```typescript
+export interface SynapseIngestPayload {
+  source_id: string;
+  payload: {
+    status: SynapseStatus;
+    metric_value: number;
+    anomaly_score: number;
+    domain: "saas";
+    tenant?: string;
+  };
+}
+
+export function buildIngestPayload(event: ApiActivityEvent, fused: FusedScore): SynapseIngestPayload {
+  return {
+    source_id: event.id,
+    payload: {
+      status: statusFor(fused.score),
+      metric_value: fused.firedCount,
+      anomaly_score: fused.score,
+      domain: "saas",
+      ...(event.tenant !== undefined && { tenant: event.tenant }),
+    },
+  };
+}
+```
+
+Conditional inclusion (not `tenant: event.tenant` unconditionally, which would send `tenant: undefined` as a JSON `null` or omit inconsistently depending on serialization) matches this codebase's existing pattern for optional passthrough fields and avoids sending a field Synapse-L4 doesn't yet expect from every request — relevant since `github-events-live`-sourced events, which have no `tenant`, will still call this same function.
+
+**This addendum does not, by itself, make `tenant` reach Sentinel-L7.** Synapse-L4's `RawTelemetry`/`AxiomDraft`/`Axiom` models don't accept or forward it yet — that's a separate, new Synapse-L4 ADR, not this repo's to author. Until that lands, Synapse-L4's `_try_direct_extraction()` will simply ignore the extra `tenant` key in the request body (Pydantic ignores unknown dict keys read via `.get()`/`[...]` on `payload`, which is untyped `dict[str, Any]` at the Consume stage) — no error, but silently dropped, same failure mode ADR-0008's own Context section identified for `domain` before that gap was closed.
+
+**Consequences addition:** `tests/sinks/synapse-l4.test.ts` needs a new assertion — a `tenant`-bearing event produces a payload with `tenant` present, and a `tenant`-less event (e.g. from `github-events-live`) produces a payload with the key absent, not `null`.
