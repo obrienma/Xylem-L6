@@ -4,7 +4,7 @@
 
 It fills a gap in the wider [Rhizome Risk](https://github.com/obrienma/rhizome-risk) system: nothing else there holds state across events, computes over a sliding time window, or handles out-of-order arrival. Sliding-window logic, per-identity state, and late-event handling are built by hand rather than delegated to a framework. Rationale in [ADR 0001](https://github.com/obrienma/Xylem-L6/blob/master/docs/adr/0001-ingestion-target-stream-processor.md).
 
-> \[!NOTE\] **Status:** wired to Sentinel-L7 via Synapse-L4 and verified end-to-end. The Synapse-L4 sink is opt-in; the default demo has no external dependencies.
+> **Status:** Wired to Sentinel-L7 via Synapse-L4 and verified end-to-end. The Synapse-L4 sink is opt-in; the default demo has no external dependencies.
 
 ## 📋 Contents
 
